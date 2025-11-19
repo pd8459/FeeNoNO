@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>FeeNoNo - 아파트 실거래가 지도</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #map { width: 100%; height: 600px; }
+        .list-container { height: 500px; overflow-y: auto; }
+        .list-group-item { cursor: pointer; }
+        .list-group-item:hover { background-color: #f8f9fa; }
+        #back-to-complex-btn { display: none; } /* 뒤로가기 버튼은 일단 숨김 */
+    </style>
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=3e76fe79c83a7419b49f04db157ee82b&autoload=false"></script>
+</head>
+<body>
+
+<div class="container mt-4">
+    <h2 class="mb-3 text-center">지도로 보는 아파트 실거래가 🗺️</h2>
+    <div class="d-flex justify-content-center mb-3">
+        <button id="find-me-btn" class="btn btn-success me-2">내 위치</button>
+        <button id="back-to-complex-btn" class="btn btn-secondary">전체 단지 보기</button>
+    </div>
+    <div class="row">
+        <div class="col-md-8">
+            <div id="map" class="rounded shadow"></div>
+        </div>
+        <div class="col-md-4">
+            <div class="input-group mb-3 shadow-sm">
+                <input type="text" id="search-keyword" class="form-control" placeholder="아파트 이름 검색">
+                <button id="search-btn" class="btn btn-primary">검색</button>
+            </div>
+            <div id="trade-list" class="list-group list-container"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    kakao.maps.load(initMap);
+
+    let map;
+    let initialComplexData = [];
+
+    async function initMap() {
+        const mapContainer = document.getElementById('map');
+        const defaultPosition = new kakao.maps.LatLng(37.566826, 126.9786567);
+        map = new kakao.maps.Map(mapContainer, { center: defaultPosition, level: 8 });
+
+        initialComplexData = await fetchData('/api/trades');
+        if (initialComplexData) {
+            displayMarkersAndList(initialComplexData, 'complex');
+        }
+        setupEventListeners();
+    }
+
+    async function fetchData(url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('정보를 불러오지 못했습니다.');
+            return await response.json();
+        } catch (error) {
+            console.error(error);
+            document.getElementById('map').innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+            return null;
+        }
+    }
+
+    function initializeMap(data) {
+        displayMarkersAndList(data, 'complex');
+    }
+
+    function setupEventListeners() {
+        const searchBtn = document.getElementById('search-btn');
+        const searchKeyword = document.getElementById('search-keyword');
+        const findMeBtn = document.getElementById('find-me-btn');
+        const backBtn = document.getElementById('back-to-complex-btn');
+
+        searchBtn.addEventListener('click', async () => {
+            const keyword = searchKeyword.value;
+            if (!keyword) {
+                displayMarkersAndList(initialComplexData, 'complex');
+                backBtn.style.display = 'none';
+                return;
+            }
+            const searchResult = await fetchData(`/api/trades/search?aptName=${keyword}`);
+            if (searchResult) {
+                displayMarkersAndList(searchResult, 'trade');
+                backBtn.style.display = 'inline-block';
+            }
+        });
+
+        searchKeyword.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') searchBtn.click();
+        });
+
+        backBtn.addEventListener('click', () => {
+            displayMarkersAndList(initialComplexData, 'complex');
+            searchKeyword.value = '';
+            backBtn.style.display = 'none';
+        });
+
+        findMeBtn.addEventListener('click', () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    const userPosition = new kakao.maps.LatLng(position.coords.latitude, position.coords.longitude);
+                    map.setLevel(5, { animate: true });
+                    map.panTo(userPosition);
+                    const markerImage = new kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png', new kakao.maps.Size(24, 35));
+                    new kakao.maps.Marker({ map: map, position: userPosition, title: '내 위치', image: markerImage });
+                }, () => alert('위치 정보를 가져오는 데 실패했습니다.'));
+            } else {
+                alert('이 브라우저에서는 위치 정보 기능을 지원하지 않습니다.');
+            }
+        });
+    }
+
+    let currentInfoWindow = null;
+    const markers = [];
+
+    function displayMarkersAndList(data, type) {
+        const listContainer = document.getElementById('trade-list');
+        listContainer.innerHTML = '';
+        markers.forEach(marker => marker.setMap(null));
+        markers.length = 0;
+
+        if (!data || data.length === 0) {
+            listContainer.innerHTML = '<p class="text-center p-3">정보가 없습니다.</p>';
+            return;
+        }
+
+        data.forEach(item => {
+            if (!item.latitude || !item.longitude) return;
+
+            const position = new kakao.maps.LatLng(item.latitude, item.longitude);
+            const marker = new kakao.maps.Marker({ position: position, title: item.apartmentName });
+            marker.setMap(map);
+            markers.push(marker);
+
+            const { content, listItem } = createContent(item, type);
+            const infowindow = new kakao.maps.InfoWindow({ content: content, removable: true });
+
+            const openInfoWindow = () => {
+                if (currentInfoWindow) currentInfoWindow.close();
+                infowindow.open(map, marker);
+                currentInfoWindow = infowindow;
+            };
+
+            kakao.maps.event.addListener(marker, 'click', () => {
+                if (type === 'complex') {
+                    showTransactionsFor(item.apartmentName);
+                } else {
+                    openInfoWindow();
+                }
+            });
+
+            listItem.addEventListener('click', (e) => {
+                e.preventDefault();
+                map.panTo(position);
+                if (type === 'complex') {
+                    showTransactionsFor(item.apartmentName);
+                } else {
+                    openInfoWindow();
+                }
+            });
+            listContainer.appendChild(listItem);
+        });
+
+        if (markers.length > 0) {
+            const bounds = new kakao.maps.LatLngBounds();
+            markers.forEach(marker => bounds.extend(marker.getPosition()));
+            map.setBounds(bounds);
+        }
+    }
+
+    async function showTransactionsFor(aptName) {
+        const transactions = await fetchData(`/api/trades/search?aptName=${aptName}`);
+        if (transactions) {
+            displayMarkersAndList(transactions, 'trade');
+            document.getElementById('back-to-complex-btn').style.display = 'inline-block';
+        }
+    }
+
+    function createContent(item, type) {
+        let content, listItemHtml;
+
+        if (type === 'trade') {
+            content = `<div style="padding:10px; width:280px; font-size:14px; line-height:1.5;">
+                            <strong style="font-size:16px;">${item.apartmentName}</strong><br>
+                            <strong>거래가:</strong> ${formatPrice(item.dealAmount)}<br>
+                            <span style="color:gray;">계약: ${item.dealYearMonth}.${item.dealDay} / ${item.floor}층</span><br>
+                            <span style="color:gray; font-size:12px;">${item.roadNameAddress}</span>
+                         </div>`;
+            listItemHtml = `<h6 class="mb-1">${item.apartmentName} (${item.floor}층)</h6>
+                              <p class="mb-1 fw-bold">${formatPrice(item.dealAmount)}</p>
+                              <p class="mb-1 small text-muted">계약일: ${item.dealYearMonth}.${item.dealDay}</p>`;
+        } else { // complex
+            content = `<div style="padding:10px; width:280px; font-size:14px; line-height:1.5;">
+                            <strong style="font-size:16px;">${item.apartmentName}</strong><br>
+                            <strong>평균가:</strong> ${formatPrice(item.averageDealAmount)}<br>
+                            <span style="color:gray;">최근 거래: ${item.transactionCount}건</span><br>
+                            <span style="color:gray; font-size:12px;">${item.roadNameAddress}</span>
+                         </div>`;
+            listItemHtml = `<h6 class="mb-1">${item.apartmentName} (${item.transactionCount}건)</h6>
+                              <p class="mb-1 fw-bold">평균 ${formatPrice(item.averageDealAmount)}</p>
+                              <p class="mb-1 small text-muted">${item.roadNameAddress || ''}</p>`;
+        }
+
+        const listItem = document.createElement('a');
+        listItem.href = '#';
+        listItem.className = 'list-group-item list-group-item-action';
+        listItem.innerHTML = listItemHtml;
+
+        return { content, listItem };
+    }
+
+    function formatPrice(price) {
+        if (!price) return '정보 없음';
+        const priceInt = parseInt(price);
+        const eok = Math.floor(priceInt / 10000);
+        const man = priceInt % 10000;
+        if (eok > 0) {
+            return man > 0 ? `${eok}억 ${man.toLocaleString()}만원` : `${eok}억`;
+        }
+        return `${man.toLocaleString()}만원`;
+    }
+</script>
+
+</body>
+</html>

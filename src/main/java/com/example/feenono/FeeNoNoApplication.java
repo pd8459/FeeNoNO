@@ -1,10 +1,12 @@
 package com.example.feenono;
 
-import com.example.feenono.realestate.CsvParserService;
+import com.example.feenono.realestate.GeocodingService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestTemplate;
 
 @SpringBootApplication
 public class FeeNoNoApplication {
@@ -14,9 +16,9 @@ public class FeeNoNoApplication {
     }
 
     @Bean
-    public CommandLineRunner run(CsvParserService csvParserService) {
+    public CommandLineRunner run(GeocodingService geocodingService) {
         return args -> {
-            csvParserService.parseAndSave();
+           // geocodingService.setCoordinatesForSampleData(); // <-- 여기!
         };
     }
 }
