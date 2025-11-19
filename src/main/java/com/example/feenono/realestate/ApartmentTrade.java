@@ -1,45 +1,39 @@
 package com.example.feenono.realestate;
 
-import com.opencsv.bean.CsvBindByName;
-import com.opencsv.bean.CsvBindByPosition;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import lombok.Data;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Data
+@Getter
+@Setter
 @Entity
+@NoArgsConstructor
 public class ApartmentTrade {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @CsvBindByPosition(position = 1)
-    private String siguungu;
-
-    @CsvBindByPosition(position = 5)
+    // API에서 받아올 데이터 필드 (타입 수정)
     private String apartmentName;
+    private double exclusiveArea;   // String -> double
+    private int dealYearMonth;    // String -> int
+    private int dealDay;          // String -> int
+    private int dealAmount;       // ★★★ String -> int ★★★ (오류 해결)
+    private int floor;            // String -> int
+    private int buildYear;        // String -> int
 
-    @CsvBindByPosition(position = 6)
-    private String exclusiveArea;
+    // 지오코딩을 위해 '지번주소'를 저장할 필드
+    private String roadNameAddress; // (ApiDataService에서 "읍면동 + 지번"을 여기에 저장)
 
-    @CsvBindByPosition(position = 7)
-    private String dealYearMonth;
+    // 지오코딩 결과로 채워질 필드
+    private Double latitude;
+    private Double longitude;
 
-    @CsvBindByPosition(position = 8)
-    private String dealDay;
-
-    @CsvBindByPosition(position = 9)
-    private String dealAmount;
-
-    @CsvBindByPosition(position = 11)
-    private String floor;
-
-    @CsvBindByPosition(position = 14)
-    private String buildYear;
-
-    @CsvBindByPosition(position = 15)
-    private String roadNameAddress;
+    // siguungu 필드 (ApiDataService에서 현재 사용 안 함, 필요하면 추가)
+    // private String siguungu;
 }
